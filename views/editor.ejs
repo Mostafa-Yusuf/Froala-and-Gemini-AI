@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link rel="stylesheet" href="/froalacss">
+    <script src="/froalajs"></script>
+    <title>Document</title>
+    <style>
+        #chat-container{
+            width: 600px;
+            overflow: scroll;
+            height: 300px;
+
+        }
+        #chat-form{
+            padding: 15px;
+        }
+        #chat-form-input{
+            width: 80%;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #999;
+        }
+
+        #chat-form-button{
+            padding: 10px;
+            background: #1978de;
+            color: #fff;
+            border: 1px solid;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        #chat-form-button:hover{
+            background: #065cb8;
+
+        }
+        .chat-prompt, .chat-ai-response{
+            padding: 15px;
+            text-align: justify;
+        }
+
+        .chat-prompt{
+            background: #eee;
+            width: auto;
+            padding: 10px;
+            margin: 15px 100px 0 0;
+            border-radius: 15px;
+            border-top-left-radius: 0;
+        }
+
+    </style>
+</head>
+<body>
+    <h1>Froala Editor</h1>
+    <textarea id="example"></textarea>
+
+     <script>
+        (function (FroalaEditor) {
+
+            // Define popup template.
+            Object.assign(FroalaEditor.POPUP_TEMPLATES, {
+            'Gemini.popup': '[_BUTTONS_][_CUSTOM_LAYER_]'
+            });
+
+            // Define popup buttons.
+            Object.assign(FroalaEditor.DEFAULTS, {
+                geminiPopupButtons: ['hideAI', '|', 'getFeedback','clearChat'],
+            });
+
+            // Define the plugin.
+            // The editor parameter is the current instance.
+            FroalaEditor.PLUGINS.Gemini = function (editor) {
+
+                // Create custom popup.
+                function initPopup () {
+                    // Load popup template.
+                    var template = FroalaEditor.POPUP_TEMPLATES.Geminipopup;
+                    if (typeof template == 'function') template = template.apply(editor);
+
+                    // Popup buttons.
+                    var popup_buttons = '';
+
+                    // Create the list of buttons.
+                    if (editor.opts.geminiPopupButtons.length > 1) {
+                    popup_buttons += '<div class="fr-buttons">';
+                    popup_buttons += editor.button.buildList(editor.opts.geminiPopupButtons);
+                    popup_buttons += '</div>';
+                    }
+
+                    // Load popup template.
+                    var template = {
+                        buttons: popup_buttons,
+                        custom_layer: `<div id="chat-container"></div>
+                        <div id="chat-form">
+                            <input id="chat-form-input" type="text" placeholder="Ask AI" />
+                            <button id="chat-form-button" type="button">Send!</button> 
+                        </div>
+                        `
+                    };
+
+                    // Create popup.
+                    var $popup = editor.popups.create('Gemini.popup', template);
+
+                    return $popup;
+                }
+
+                function _chatButtonHandler () {
+                    const prompt = document.getElementById("chat-form-input").value;
+                        editor.Gemini.displayPrompet(prompt);
+
+                        editor.Gemini.loadingMessage();
+
+                        editor.Gemini.generateText(prompt).then(result => {
+
+                        editor.Gemini.displayAiResponse(result);
+
+                        }).catch(error => {
+                            // Handle any errors here
+                            console.error('Error:', error);
+                        });                    
+                }
+                                
+                // Show the popup
+                function showPopup () {
+                    // Get the popup object defined above.
+                    var $popup = editor.popups.get('Gemini.popup');
+
+                    // If popup doesn't exist then create it.
+                    // To improve performance it is best to create the popup when it is first needed
+                    // and not when the editor is initialized.
+                    if (!$popup) $popup = initPopup();
+
+                    // Set the editor toolbar as the popup's container.
+                    editor.popups.setContainer('Gemini.popup', editor.$tb);
+
+                    // This custom popup is opened by pressing a button from the editor's toolbar.
+                    // Get the button's object in order to place the popup relative to it.
+                    var $btn = editor.$tb.find('.fr-command[data-cmd="AI"]');
+
+                    // Compute the popup's position.
+                    var left = $btn.offset().left + $btn.outerWidth() / 2;
+                    var top = $btn.offset().top + (editor.opts.toolbarBottom ? 10 : $btn.outerHeight() - 10);
+
+                    const chatButton = document.getElementById("chat-form-button");
+                    chatButton.addEventListener('click', _chatButtonHandler);
+
+                    // Show the custom popup.
+                    // The button's outerHeight is required in case the popup needs to be displayed above it.
+                    editor.popups.show('Gemini.popup', left, top, $btn.outerHeight());
+                }
+
+                // Hide the custom popup.
+                function hidePopup () {
+                    document.getElementById("chat-form-button").removeEventListener('click',_chatButtonHandler);
+                    editor.popups.hide('Gemini.popup');
+                }
+
+                async function generateText(prompt) {
+                    const response = await fetch('/gemini', {
+                        method: 'POST',
+                        headers: {
+                        'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ prompt }),
+                    });
+
+                    return await response.json();
+                    
+                }
+
+                // Display a loading message
+                function loadingMessage(){
+
+                    const chatContainer = document.getElementById("chat-container");
+                    const loadingMessage = document.createElement('p');
+                    loadingMessage.id = 'chat-loading-response';
+                    loadingMessage.textContent = 'Generating response... Please wait.';
+                    chatContainer.append(loadingMessage);
+
+                }
+
+                // Display prompt
+                function displayPrompet(prompt){
+
+                    const chatContainer = document.getElementById("chat-container");
+                    const loadingMessage = document.createElement('p');
+                    loadingMessage.className = 'chat-prompt';
+                    loadingMessage.textContent = prompt;
+                    chatContainer.append(loadingMessage);
+
+                }
+
+                function displayAiResponse(result){
+                    const chatContainer = document.getElementById("chat-container");
+                    const loadingMessage = document.getElementById('chat-loading-response');
+
+                    // Remove the loading message
+                    chatContainer.removeChild(loadingMessage);
+
+                    // Create a new paragraph element for the response
+                    const p = document.createElement('p');
+                    p.className = 'chat-ai-response';
+                    // Set the text content to the resolved data
+                    p.innerHTML = result.response; 
+
+                    // Prepend the new paragraph to the chat container
+                    chatContainer.append(p);
+                }
+
+                function clearChat(){
+                    const chatContainer = document.getElementById("chat-container");
+
+                    // Prepend the new paragraph to the chat container
+                    chatContainer.textContent="";
+                }
+
+                // The start point for your plugin.
+                function _init () {}
+
+ 
+                return {
+                _init: _init,
+                generateText,
+                loadingMessage,
+                displayPrompet,
+                displayAiResponse,
+                clearChat,
+                showPopup,
+                hidePopup
+                }
+            }
+
+
+            // Define an icon and command for the button that opens the custom popup.
+            FroalaEditor.DefineIcon('AI', {NAME: 'AI', template: 'text'});            
+            FroalaEditor.RegisterCommand('AI', {
+            title: 'Display Gemini AI Popup',
+            icon: 'AI',
+            undo: false,
+            focus: false,
+            popup: true,
+            // Buttons which are included in the editor toolbar should have the plugin property set.
+            plugin: 'Gemini',
+            callback: function () {
+                if (!this.popups.isVisible('Gemini.popup')) {
+                this.Gemini.showPopup();
+                }
+                else {
+                if (this.$el.find('.fr-marker')) {
+                    this.events.disableBlur();
+                    this.selection.restore();
+                }
+                this.popups.hide('Gemini.popup');
+                }
+            }
+            });
+
+            // Define custom popup close button icon and command.
+            FroalaEditor.DefineIcon('hideAI', { NAME: 'close', SVG_KEY: 'close'});
+            FroalaEditor.RegisterCommand('hideAI', {
+            title: 'Close',
+            icon: 'hideAI',
+            undo: false,
+            focus: false,
+            callback: function () {
+                this.Gemini.hidePopup();
+            }
+            });
+
+            
+            // Define custom popup 1.
+            FroalaEditor.DefineIcon('getFeedback', { NAME: 'star', SVG_KEY: 'star'})
+            FroalaEditor.RegisterCommand('getFeedback', {
+            title: 'Get Feedback on Your Writing',
+            icon: 'getFeedback',
+            undo: false,
+            focus: false,
+            callback: function () {
+
+                const editorTextContent = this.$el[0].textContent;
+                const proPrompt = "Hello AI, could you please provide SEO feedback on my writing? I am looking for insights on keyword optimization, readability, and meta description effectiveness. Here is the text:"+editorTextContent+". Thank you!"
+                
+                this.Gemini.displayPrompet("Generate feedback about my writing (editor content)");
+
+                this.Gemini.loadingMessage();
+
+                this.Gemini.generateText(proPrompt).then(result => {
+
+                        this.Gemini.displayAiResponse(result);
+
+                    }).catch(error => {
+                        // Handle any errors here
+                        console.error('Error:', error);
+                    });
+                }
+            });
+
+            // clear chat button
+            FroalaEditor.DefineIcon('clearChat', { NAME: 'clear', SVG_KEY: 'remove'})
+            FroalaEditor.RegisterCommand('clearChat', {
+                title: 'Start A New Chat',
+                icon: 'clearChat',
+                undo: false,
+                focus: false,
+                callback: function () {
+                
+                    this.Gemini.clearChat();
+                }
+            });
+            
+    })(FroalaEditor);
+     </script>
+
+    <script>
+
+        var editor = new FroalaEditor("#example",{
+            toolbarButtons: [['AI', 'bold', 'italic', 'underline', 'strikeThrough', 'subscript', 'superscript'], ['fontFamily', 'fontSize', 'textColor', 'backgroundColor'], ['inlineClass', 'inlineStyle', 'clearFormatting']]
+
+        });
+
+    </script>
+</body>
+</html>
